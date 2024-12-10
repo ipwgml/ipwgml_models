@@ -59,5 +59,33 @@ def train(
 
 
 class Retrieval:
+    """
+    This class implements the actual XGBoos retrieval and provides the interface
+    to evaluate the model on the IPWGML SPR dataset.
+    """
     def __init__(self, path: Path):
-        pass
+        """
+        Args:
+            path: The path where the training of the model has been performed.
+        """
+        path = Path(path)
+        model_path = path / "model.pckl"
+        with open(model_path, "rb") as inpt:
+            self.model = pickle.load(inpt)
+
+    def __call__(self, input_data: xr.Dataset) -> xr.Dataset:
+        """
+        This function implements the retrieval inference for the XBGBoost model.
+
+        Args:
+            input_data: An xarray.Dataset containing the input data.
+
+        Return:
+            An xarray.Dataset containing the retrieval results.
+        """
+        input_data = input_data.transpose("batch", ...)
+        obs = input_data["obs_gmi"].data
+        sp = self.model.predict(obs)
+        return xr.Dataset({
+            "surface_precip": (("samples",), sp)
+        })

@@ -33,9 +33,10 @@ def train(
     try:
         mod = import_module(f"ipwgml_models.models.{model}")
     except ModuleNotFoundError:
-        LOGGER.error(
-            "Could not find a model with the name {model}."
+        LOGGER.exception(
+            f"Could not find a model with the name {model}."
         )
+        return 1
 
     retrieval_input = eval(retrieval_input)
     if isinstance(retrieval_input, list):
