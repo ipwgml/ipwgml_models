@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "ipwgml_models"
+version = "0.1"  # REQUIRED, although can be dynamic
+description = "ML modesl for the IPWG ML benchmark dataset"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE.txt"}
+keywords = ["machine-learning", "benchmark", "dataset", "meteorology", "geophyisics"]
+authors = [
+  {name = "Simon Pfreundschuh", email = "simon.pfreundschuh@colostate.edu" }
+]
+maintainers = [
+  {name = "Simon Pfreundschuh", email = "simon.pfreundschuh@colostate.edu" }
+]
+dependencies = [
+  "appdirs",
+  "cartopy",
+  "click",
+  "ipywidgets",
+  "numpy<2",
+  "netCDF4<1.7",
+  "h5netcdf",
+  "hdf5plugin",
+  "jupyter-book",
+  "matplotlib",
+  "requests-cache",
+  "rich",
+  "scipy",
+  "seaborn",
+  "toml",
+  "xarray",
+  "xgboost"
+]
+
+[project.optional-dependencies]
+complete = ["pytest", "torch", "lightning", "cartopy"]
+
+[project.urls]
+"Source" = "https://github.com/simonpf/ipwgml_models/"
+
+[project.scripts]
+ipwgml_models = "ipwgml_models.cli:ipwgml_models"
