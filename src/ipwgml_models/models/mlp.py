@@ -6,18 +6,23 @@ This module implements a single-pixel retrieval for the IPWGML dataset based
 on a multi-layer perceptron (MLP). The MLP is implemented using the
  'pytorch_retrieve' package.
 """
+import dataclasses
 from pathlib import Path
 import subprocess
 from toml import loads, dump
+from typing import List
 
 import torch
-from pytorch_retireve.architectures import load_model
+from pytorch_retrieve.architectures import load_model
+import xarray as xr
 
 from ipwgml.input import InputConfig
 from ipwgml.target import TargetConfig
 
 
 MODEL_CFG = """
+name = "model"
+
 [architecture]
 name = "MLP"
 
@@ -38,6 +43,7 @@ def get_input(input_cfg: InputConfig) -> str:
     input_str = f"""
 
     [input.{name}]
+    name = "{name}"
     n_features = {input_cfg.features[name]}
     normalize = "minmax"
     """
@@ -67,12 +73,10 @@ num_dataloader_workers = 1
 metrics = ["MSE", "Bias", "CorrelationCoef"]
 
 [stage_1.training_dataset_args]
-augment = true
 batch_size = 2048
 shuffle = true
 
 [stage_1.validation_dataset_args]
-augment = false
 batch_size = 2048
 shuffle = true
 
@@ -90,18 +94,16 @@ num_dataloader_workers = 1
 metrics = ["MSE", "Bias", "CorrelationCoef"]
 
 [stage_2.training_dataset_args]
-augment = true
 batch_size = 2048
 shuffle = true
 
 [stage_2.validation_dataset_args]
-augment = false
 batch_size = 2048
 shuffle = true
 """
 
 COMPUTE_CFG = """
-accelerator=cuda
+accelerator="cuda"
 """
 
 
@@ -115,36 +117,43 @@ def train(
     """
     Training function for the iwpgml_models CLI.
     """
-    model_cfg = loads(MODEL_CFG + "\n".join(
-        [get_input(inpt) for inpt in retrieval_input]
-    ))
+    model_cfg = loads(
+        MODEL_CFG +
+        "\n".join([get_input(inpt) for inpt in retrieval_input])
+        + OUTPUT_CFG
+    )
 
-    training_cfg = loads(TRAINING_CONFIG)
+    training_cfg = loads(TRAINING_CFG)
     for stage in ["stage_1", "stage_2"]:
-        training_cfg[f"{stage}.training_dataset_args"].update({
-            "reference_sensors": reference_sensor,
+        training_cfg[f"{stage}"]["training_dataset_args"].update({
+            "reference_sensor": reference_sensor,
+            "split": "training",
             "geometry": geometry,
-            "retrieval_input": retrieval_input,
-            "target_config": target_config
+            "retrieval_input": [inpt.to_dict() for inpt in retrieval_input],
+            "target_config": target_config.to_dict()
         })
-        training_cfg[f"{stage}.validation_dataset_args"].update({
-            "reference_sensors": reference_sensor,
+        training_cfg[f"{stage}"]["validation_dataset_args"].update({
+            "reference_sensor": reference_sensor,
+            "split": "validation",
             "geometry": geometry,
-            "retrieval_input": retrieval_input,
-            "target_config": target_config
+            "retrieval_input": [inpt.to_dict() for inpt in retrieval_input],
+            "target_config": target_config.to_dict()
         })
+
+        print([inpt.to_dict() for inpt in retrieval_input])
+
 
     with open(output_path / "model.toml", "w") as output:
         dump(model_cfg, output)
 
     with open(output_path / "training.toml", "w") as output:
-        dump(model_cfg, output)
+        dump(training_cfg, output)
 
     with open(output_path / "compute.toml", "w") as output:
-        dump(COMPUTE_CFG, output)
+        output.write(COMPUTE_CFG)
 
-    subprocess.run(["pytorch_retrieve eda"])
-    subprocess.run(["pytorch_retrieve train"])
+    subprocess.run(["pytorch_retrieve", "eda"], stderr=sys.stderr, stdout=sys.stdout)
+    subprocess.run(["pytorch_retrieve", "train"], stderr=sys.stderr, stdout=sys.stdout)
 
 
 class Retrieval:
