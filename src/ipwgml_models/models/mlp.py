@@ -11,6 +11,7 @@ from pathlib import Path
 import subprocess
 from toml import loads, dump
 from typing import List
+import sys
 
 import torch
 from pytorch_retrieve.architectures import load_model
@@ -180,17 +181,24 @@ class Retrieval:
                 inference.
             dtype: The dtype to which to convert the retrieval input.
         """
-        self.model = load_model(path / "model.toml")
+        self.model = load_model(model_path / "model.pt")
         self.device = "cpu"
-        if torch.cuda.isavailable():
+        if torch.cuda.is_available():
             self.device = "cuda"
-        self.dtype = torch.bfloat16
+        self.dtype = torch.float32
+        self.model = self.model.to(device=self.device, dtype=self.dtype).eval()
+
+        self.tile_size = None
+        self.overlap = None
+        self.input_data_format = "tabular"
+        self.batch_size = 4096
+
 
     def __call__(self, input_data: xr.Dataset) -> xr.Dataset:
         """
         Run retrieval on input data.
         """
-        dims = ("batch",) + spatial_dims
+        dims = ("batch",)
         inpt = {}
         for name in self.model.input_config.keys():
             inpt_data = torch.tensor(input_data[name].data).to(self.device, self.dtype)
@@ -203,21 +211,7 @@ class Retrieval:
             if "surface_precip" in pred:
                 results["surface_precip"] = (
                     dims,
-                    pred["surface_precip"].select(1, 0).cpu().numpy()
+                    pred["surface_precip"].expected_value().select(1, 0).cpu().numpy()
                 )
-            if "probability_of_precip" in pred:
-                pop = pred["probability_of_precip"].select(1, 0)
-                if self.logits:
-                    pop = torch.sigmoid(pop).cpu().numpy()
-                results["probability_of_precip"] = (dims, pop)
-                precip_flag = self.precip_threshold <= pop
-                results["precip_flag"] = (dims, precip_flag)
-            if "probability_of_heavy_precip" in pred:
-                pohp = pred["probability_of_heavy_precip"].select(1, 0)
-                if self.logits:
-                    pohp = torch.sigmoid(pohp).cpu().numpy()
-                results["probability_of_heavy_precip"] = (dims, pohp)
-                heavy_precip_flag = self.heavy_precip_threshold <= pohp
-                results["heavy_precip_flag"] = (dims, heavy_precip_flag)
 
         return results

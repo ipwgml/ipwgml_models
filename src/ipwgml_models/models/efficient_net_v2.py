@@ -13,6 +13,15 @@ from ipwgml.input import InputConfig
 from ipwgml.target import TargetConfig
 from ipwgml.pytorch import PytorchRetrieval
 
+
+INPUTS = {
+    "obs_gmi": "gmi",
+    "obs_atms": "atms",
+    "ancillary": "ancillary",
+    "obs_geo_ir": "geo_ir",
+    "obs_geo": "geo_ir",
+}
+
 MODEL_CFG = """
 name = "ipwgml_efficient_net_v2"
 [architecture]
@@ -186,12 +195,43 @@ class Retrieval(PytorchRetrieval):
         self,
         model_path: Path
     ):
-        model = load_model(path / "model.toml")
-        device = "cpu"
-        if torch.cuda.isavailable():
-            device = "cuda"
-        dtype = torch.bfloat16
+        model = load_model(model_path / "model.pt")
+
         super().__init__(
             model,
-            [inpt.name for inpt in model.input_config.values()],
+            [INPUTS[name] for name in model.input_config.keys()],
         )
+
+        self.device = "cpu"
+        if torch.cuda.is_available():
+            self.device = "cuda"
+        self.dtype = torch.float32
+        self.model = self.model.to(device=self.device).eval()
+
+        self.tile_size = (256, 256)
+        self.overlap = 64
+        self.input_data_format = "spatial"
+        self.batch_size = 8
+
+    def __call__(self, input_data: xr.Dataset) -> xr.Dataset:
+        """
+        Run retrieval on input data.
+        """
+        input_data = input_data.transpose("batch", "channels_gmi", "latitude", "longitude")
+        dims = ("batch", "latitude", "longitude")
+        inpt = {}
+        for name in self.model.input_config.keys():
+            inpt_data = torch.tensor(input_data[name].data).to(self.device, self.dtype)
+            inpt[name] = inpt_data
+
+        with torch.no_grad():
+            pred = self.model(inpt)
+            results = xr.Dataset()
+            if "surface_precip" in pred:
+                results["surface_precip"] = (
+                    dims,
+                    pred["surface_precip"].expected_value().select(1, 0).cpu().numpy()
+                )
+
+
+        return results

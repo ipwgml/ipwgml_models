@@ -35,12 +35,19 @@ def train(
         format="tabular"
     )
     x_train = np.concatenate(
-        [inpt.load_data(training_files[inpt.name][0], None) for inpt in retrieval_input],
+        [
+            next(iter(inpt.load_data(training_files[inpt.name][0], None).values()))
+            for inpt in retrieval_input
+        ],
         1
     )
+    x_train = x_train.T
     y_train = target_config.load_reference_precip(
-        training_files["target"]
+        training_files["target"][0]
     )
+    valid = np.isfinite(y_train)
+    x_train = x_train[valid]
+    y_train = y_train[valid]
 
     # Define XGBoost regressor
     model = xgb.XGBRegressor(
@@ -54,7 +61,7 @@ def train(
 
     model.fit(x_train, y_train)
 
-    with open(output_path / "model", "wb") as f:
+    with open(output_path / "model.pckl", "wb") as f:
         pickle.dump(model, f)
 
 
@@ -72,6 +79,12 @@ class Retrieval:
         model_path = path / "model.pckl"
         with open(model_path, "rb") as inpt:
             self.model = pickle.load(inpt)
+
+        self.tile_size = None
+        self.overlap = None
+        self.input_data_format = "tabular"
+        self.batch_size = 4096
+
 
     def __call__(self, input_data: xr.Dataset) -> xr.Dataset:
         """
