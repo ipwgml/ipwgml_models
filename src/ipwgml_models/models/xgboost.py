@@ -2,7 +2,7 @@
 ipwgml_models.models.xgboost
 ============================
 
-This module provides functionality to train an XGBoost regressor on the
+This module provides functionality to train and evaluate an XGBoost regressor on the
 IPWG ML SPR dataset.
 """
 from pathlib import Path
@@ -15,6 +15,14 @@ import numpy as np
 import xgboost as xgb
 import xarray as xr
 
+INPUT_NAMES = {
+    "gmi": ["obs_gmi"],
+    "atms": ["obs_atms"],
+    "geo_ir": ["obs_geo_ir"],
+    "geo": ["obs_geo"],
+    "ancillary": ["ancillary"],
+}
+
 
 def train(
     reference_sensor: str,
@@ -22,16 +30,23 @@ def train(
     retrieval_input: List[InputConfig],
     target_config: TargetConfig,
     output_path: Path
-):
+) -> None:
     """
     Training function for the iwpgml_models CLI.
+
+    Args:
+        reference_sensor: The reference sensor defining which subset of the SPR dataset to train the model on.
+        geometry: The geometry to use for the retrieval: 'on_swath' or 'gridded'.
+        retrieval_input: List of retrieval inputs to use.
+        target_config: The configuration for the target data to use for training.
+        output_path: The path to which to write the trained model data.
     """
     training_files = download_dataset(
         dataset_name="spr",
-        reference_sensor="gmi",
-        input_data=["gmi"],
+        reference_sensor=reference_sensor,
+        input_data=retrieval_input,
         split="training",
-        geometry="on_swath",
+        geometry=geometry,
         format="tabular"
     )
     x_train = np.concatenate(
@@ -59,7 +74,14 @@ def train(
         random_state=42
     )
 
+    input_names = []
+    for inpt in retrieval_input:
+        input_names += INPUT_NAMES[inpt.name]
+    model.input_names = input_names
+
     model.fit(x_train, y_train)
+
+
 
     with open(output_path / "model.pckl", "wb") as f:
         pickle.dump(model, f)
@@ -67,8 +89,7 @@ def train(
 
 class Retrieval:
     """
-    This class implements the actual XGBoos retrieval and provides the interface
-    to evaluate the model on the IPWGML SPR dataset.
+    This class implements the interface to run the XGBoost retrieval on the SPR data.
     """
     def __init__(self, path: Path):
         """
@@ -88,7 +109,7 @@ class Retrieval:
 
     def __call__(self, input_data: xr.Dataset) -> xr.Dataset:
         """
-        This function implements the retrieval inference for the XBGBoost model.
+        Run XGBoost retrieval on SPR input data.
 
         Args:
             input_data: An xarray.Dataset containing the input data.
@@ -97,8 +118,8 @@ class Retrieval:
             An xarray.Dataset containing the retrieval results.
         """
         input_data = input_data.transpose("batch", ...)
-        obs = input_data["obs_gmi"].data
-        sp = self.model.predict(obs)
+        x = np.concatenate([input_data[name].data for name in self.model.input_names], axis=1)
+        surface_precip = self.model.predict(x)
         return xr.Dataset({
-            "surface_precip": (("samples",), sp)
+            "surface_precip": (("samples",), surface_precip)
         })

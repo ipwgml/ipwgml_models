@@ -34,7 +34,8 @@ dependencies = [
   "seaborn",
   "toml",
   "xarray",
-  "xgboost"
+  "xgboost",
+  "scikit-learn"
 ]
 
 [project.optional-dependencies]
