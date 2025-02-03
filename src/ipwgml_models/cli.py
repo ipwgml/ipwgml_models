@@ -8,6 +8,7 @@ import logging
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+import sys
 
 import click
 import xarray as xr
@@ -128,6 +129,8 @@ def evaluate(
 
     if mod is None:
         try:
+            sys.path.insert(0, ".")
+            print(sys.path)
             mod = import_module(f"{model}")
         except ModuleNotFoundError:
             LOGGER.exception(

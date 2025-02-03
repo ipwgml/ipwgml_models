@@ -22,10 +22,14 @@ class Retrieval():
     """
     Interface for running the GPROF-V8 retrieval on the IPWGML SPR dataset.
     """
-    def __init__(self, device="cpu", dtype="float32"):
+    def __init__(self, path: Path, device="cuda:0", dtype="float32"):
         self.model = load_model(download_model()).eval()
         self.dtype = getattr(torch, dtype)
         self.device = torch.device(device)
+        self.tile_size = (128, 64)
+        self.overlap = 16
+        self.input_data_format = "spatial"
+        self.batch_size = 32
 
     def __call__(self, input_data: xr.Dataset) -> xr.Dataset:
         """
