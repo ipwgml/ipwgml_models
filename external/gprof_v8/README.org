@@ -1,0 +1,11 @@
+#+title: GPROF V8 precipitation retrieval
+
+This external model provides an interface for GPROF V8 retrieval model.
+
+## Requirements
+
+This model requires the ``gprof_nn`` package to be installed. To install it run
+
+````shell
+pip install requirements.txt
+````
