@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional, Union
 import sys
 
 import click
+from rich.console import Console
+from rich.logging import RichHandler
 import xarray as xr
 
 from ipwgml.input import InputConfig
@@ -19,6 +21,14 @@ from ipwgml.target import TargetConfig
 
 
 LOGGER = logging.getLogger(__name__)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    handlers=[RichHandler()]
+)
+console = Console()
+LOGGER = logging.getLogger("ipwgml_models")
 
 
 @click.group
@@ -31,12 +41,21 @@ def ipwgml_models():
 @click.argument("geometry")
 @click.argument("retrieval_input")
 @click.argument("target_config", default=None, required=False)
+@click.option(
+    "--options",
+    default=None,
+    help=(
+        "Interpretable Python string defining a dictionary of options to be passed to the 'train' method "
+        "of the underlying model."
+    )
+)
 def train(
     model: str,
     reference_sensor: str,
     geometry: str,
     retrieval_input: Union[List[str], Dict[str, Any]],
-    target_config: Optional[Union[Dict[str, Any]]] = None
+    target_config: Optional[Union[Dict[str, Any]]] = None,
+    options: Optional[Dict[str, Any]] = None
 ):
     """
     Train MODEL on REFERENCE_SENSOR observations for given geometry, retrieval input, and target configuration.
@@ -76,12 +95,18 @@ def train(
         target_config = {}
     target_config = TargetConfig(**target_config)
 
+    if options is not None:
+        options = eval(options)
+    else:
+        options = {}
+
     mod.train(
         reference_sensor,
         geometry,
         retrieval_input,
         target_config,
-        Path(".")
+        Path("."),
+        options=options
     )
 
 
@@ -100,7 +125,7 @@ def evaluate(
     geometry: str,
     retrieval_input: Union[List[str], Dict[str, Any]],
     target_config: Optional[Union[Dict[str, Any]]] = None,
-    n_processes: Optional[int] = None
+    n_processes: Optional[int] = None,
 ):
     """
     Evaluated the trained MODEL on SPR evaluation data over DOMAIN using given geometry, retrieval input, and

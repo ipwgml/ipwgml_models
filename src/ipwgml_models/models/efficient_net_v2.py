@@ -2,7 +2,7 @@
 from pathlib import Path
 import subprocess
 from toml import loads, dump
-from typing import List
+from typing import Any, Dict, List, Optional
 import sys
 
 import torch
@@ -48,11 +48,10 @@ block_factory_args = [
 ]
 
 [architecture.decoder]
-channels = [160, 128, 64, 48, 24]
-upsampling_factors = [2, 2, 2, 2, 1]
-stage_depths = [4, 3, 2, 2, 1]
+channels = [160, 128, 64, 48]
+upsampling_factors = [2, 2, 2, 2]
+stage_depths = [4, 3, 2, 3]
 block_factory = [
-    "InvertedBottleneck",
     "InvertedBottleneck",
     "InvertedBottleneck",
     "InvertedBottleneck",
@@ -62,8 +61,7 @@ block_factory_args = [
     {activation_factory="GELU", normalization_factory="LayerNormFirst", stochastic_depth=0.6, expansion_factor=6, excitation_ratio=0.25, anti_aliasing=true},
     {activation_factory="GELU", normalization_factory="LayerNormFirst", stochastic_depth=0.7, expansion_factor=4, excitation_ratio=0.25, anti_aliasing=true},
     {activation_factory="GELU", normalization_factory="LayerNormFirst", stochastic_depth=0.8, expansion_factor=4, excitation_ratio=0.0, fused=true, anti_aliasing=true},
-    {activation_factory="GELU", normalization_factory="LayerNormFirst", stochastic_depth=0.9, expansion_factor=4, excitation_ratio=0.0, fused=true, anti_aliasing=true},
-    {activation_factory="GELU", normalization_factory="LayerNormFirst", expansion_factor=1, excitation_ratio=0.0, fused=true, anti_aliasing=true},
+    {activation_factory="GELU", normalization_factory="LayerNormFirst", stochastic_depth=1.0, expansion_factor=4, fused=true, anti_aliasing=true},
 ]
 skip_connections=true
 
@@ -107,7 +105,7 @@ optimizer_args = {lr=1e-3}
 scheduler = "CosineAnnealingLR"
 scheduler_args = {"T_max"=20}
 n_epochs = 20
-batch_size = 32
+batch_size = 16
 n_dataloader_workers = 8
 metrics = ["MSE", "Bias", "CorrelationCoef"]
 
@@ -125,7 +123,7 @@ optimizer_args = {lr=5e-4}
 scheduler = "CosineAnnealingLR"
 scheduler_args = {"T_max"=40}
 n_epochs = 40
-batch_size = 32
+batch_size = 16
 n_dataloader_workers = 8
 metrics = ["MSE", "Bias", "CorrelationCoef"]
 
@@ -137,7 +135,8 @@ augment = false
 """
 
 COMPUTE_CFG = """
-accelerator="cuda"
+accelerator="{accelerator}"
+devices={devices}
 """
 
 def train(
@@ -145,11 +144,16 @@ def train(
     geometry: str,
     retrieval_input: List[InputConfig],
     target_config: TargetConfig,
-    output_path: Path
+    output_path: Path,
+    options: Optional[Dict[str, Any]] = None
 ):
     """
     Training function for the iwpgml_models CLI.
     """
+
+    if options is None:
+        options = {}
+
     model_cfg = loads(
         MODEL_CFG +
         "\n".join([get_input(inpt) for inpt in retrieval_input])
@@ -180,8 +184,12 @@ def train(
     with open(output_path / "training.toml", "w") as output:
         dump(training_cfg, output)
 
+    devices = options.get("devices", "[0]")
+    accelerator = options.get("accelerator", "cuda")
+    compute_cfg = COMPUTE_CFG.format(devices=devices, accelerator=accelerator)
+
     with open(output_path / "compute.toml", "w") as output:
-        output.write(COMPUTE_CFG)
+        output.write(compute_cfg)
 
     subprocess.run(["pytorch_retrieve", "eda"], stderr=sys.stderr, stdout=sys.stdout)
     subprocess.run(["pytorch_retrieve", "train"], stderr=sys.stderr, stdout=sys.stdout)

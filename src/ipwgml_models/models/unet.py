@@ -1,7 +1,7 @@
 from pathlib import Path
 import subprocess
 from toml import loads, dump
-from typing import List
+from typing import Any, Dict, List, Optional
 import sys
 
 import torch
@@ -37,7 +37,7 @@ block_factory = [
     "BasicConv",
     "BasicConv",
 ]
-block_factory_args = {activation_factory="ReLU", normalization_factory="BatchNorm"}
+block_factory_args = {activation_factory="ReLU", normalization_factory="BatchNorm2d"}
 
 [architecture.decoder]
 channels = [256, 128, 64]
@@ -91,8 +91,8 @@ optimizer_args = {lr=1e-3}
 scheduler = "CosineAnnealingLR"
 scheduler_args = {"T_max"=20}
 n_epochs = 20
-batch_size = 32
-n_dataloader_workers = 8
+batch_size = 16
+n_dataloader_workers = 1
 metrics = ["MSE", "Bias", "CorrelationCoef"]
 
 [stage_1.training_dataset_args]
@@ -109,8 +109,8 @@ optimizer_args = {lr=5e-4}
 scheduler = "CosineAnnealingLR"
 scheduler_args = {"T_max"=40}
 n_epochs = 40
-batch_size = 32
-n_dataloader_workers = 8
+batch_size = 16
+n_dataloader_workers = 1
 metrics = ["MSE", "Bias", "CorrelationCoef"]
 
 [stage_2.training_dataset_args]
@@ -121,8 +121,8 @@ augment = false
 """
 
 COMPUTE_CFG = """
-accelerator="cuda"
-devices = [0]
+accelerator="{accelerator}"
+devices={devices}
 """
 
 def train(
@@ -130,11 +130,15 @@ def train(
     geometry: str,
     retrieval_input: List[InputConfig],
     target_config: TargetConfig,
-    output_path: Path
+    output_path: Path,
+    options: Optional[Dict[str, Any]] = None
 ):
     """
     Training function for the iwpgml_models CLI.
     """
+    if options is None:
+        options = {}
+
     model_cfg = loads(
         MODEL_CFG +
         "\n".join([get_input(inpt) for inpt in retrieval_input])
@@ -165,9 +169,11 @@ def train(
     with open(output_path / "training.toml", "w") as output:
         dump(training_cfg, output)
 
+    accelerator = options.get("accelerator", "cuda")
+    devices = options.get("devices", "[0]")
+    compute_cfg = COMPUTE_CFG.format(accelerator=accelerator, devices=devices)
     with open(output_path / "compute.toml", "w") as output:
-        output.write(COMPUTE_CFG)
-
+        output.write(compute_cfg)
 
     subprocess.run(["pytorch_retrieve", "eda"], stderr=sys.stderr, stdout=sys.stdout)
     subprocess.run(["pytorch_retrieve", "train"], stderr=sys.stderr, stdout=sys.stdout)
@@ -175,7 +181,7 @@ def train(
 
 class Retrieval(PytorchRetrieval):
     """
-
+    Interface to run the trained UNet model on the SPR data.
     """
     def __init__(
         self,

@@ -10,7 +10,7 @@ import dataclasses
 from pathlib import Path
 import subprocess
 from toml import loads, dump
-from typing import List
+from typing import Any, Dict, List, Optional
 import sys
 
 import torch
@@ -61,7 +61,7 @@ kind = "Mean"
 TRAINING_CFG = """
 [stage_1]
 dataset_module = "ipwgml.pytorch.datasets"
-training_dataset = "SPRTabular"
+training_dataset = "SatRainTabular"
 validation_split = 0.2
 optimizer = "Adam"
 optimizer_args = {lr=1e-3}
@@ -82,7 +82,7 @@ shuffle = true
 
 [stage_2]
 dataset_module = "ipwgml.pytorch.datasets"
-training_dataset = "SPRTabular"
+training_dataset = "SatRainTabular"
 validation_split = 0.2
 optimizer = "Adam"
 optimizer_args = {lr=1e-3}
@@ -109,11 +109,12 @@ devices=[0]
 
 
 def train(
-    reference_sensor: str,
+    base_sensor: str,
     geometry: str,
     retrieval_input: List[InputConfig],
     target_config: TargetConfig,
-    output_path: Path
+    output_path: Path,
+    options: Optional[Dict[str, Any]] = None
 ):
     """
     Training function for the iwpgml_models CLI.
@@ -127,15 +128,17 @@ def train(
     training_cfg = loads(TRAINING_CFG)
     for stage in ["stage_1", "stage_2"]:
         training_cfg[f"{stage}"]["training_dataset_args"].update({
-            "reference_sensor": reference_sensor,
+            "base_sensor": base_sensor,
             "split": "training",
             "geometry": geometry,
+            "subset": "xs",
             "retrieval_input": [inpt.to_dict() for inpt in retrieval_input],
             "target_config": target_config.to_dict()
         })
         training_cfg[f"{stage}"]["validation_dataset_args"].update({
-            "reference_sensor": reference_sensor,
+            "base_sensor": base_sensor,
             "split": "validation",
+            "subset": "xs",
             "geometry": geometry,
             "retrieval_input": [inpt.to_dict() for inpt in retrieval_input],
             "target_config": target_config.to_dict()
